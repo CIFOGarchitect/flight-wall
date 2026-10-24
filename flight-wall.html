@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Skies — Flight Wall</title>
+<style>
+  :root {
+    --amber: #ffb000;
+    --amber-dim: #b87f00;
+    --green: #33ff66;
+    --ink: #0a0a08;
+    --panel: #141410;
+    --row: #1a1a16;
+    --text: #f2ede0;
+    --muted: #8a867a;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--text);
+    font-family: "Courier New", Courier, monospace;
+    overflow-x: hidden;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    padding: 18px 28px 12px;
+    border-bottom: 3px solid var(--amber-dim);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 32px;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  h1 {
+    font-size: clamp(26px, 4vw, 44px);
+    letter-spacing: 0.14em;
+    color: var(--amber);
+    font-weight: 700;
+  }
+  h1 span { color: var(--text); }
+  .live { display: inline-flex; align-items: center; gap: 10px; font-size: 15px; letter-spacing: 0.2em; }
+  .dot {
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+    animation: pulse 1.6s infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .meta { color: var(--muted); font-size: 14px; letter-spacing: 0.08em; }
+  .meta b { color: var(--text); font-weight: 400; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    padding: 14px 28px;
+    align-items: center;
+    border-bottom: 1px solid #2a2a24;
+    font-size: 14px;
+  }
+  .controls label { color: var(--muted); letter-spacing: 0.08em; }
+  .controls select, .controls button, .controls input {
+    background: var(--panel); color: var(--text);
+    border: 1px solid #3a3a30; border-radius: 4px;
+    font-family: inherit; font-size: 14px; padding: 7px 12px; cursor: pointer;
+  }
+  .controls input { cursor: text; }
+  #customRadius { width: 84px; display: none; }
+  #favName { width: 170px; }
+  .controls button:hover { border-color: var(--amber); color: var(--amber); }
+  .controls button.active { border-color: var(--amber); color: var(--amber); }
+  .status { margin-left: auto; color: var(--muted); font-size: 13px; letter-spacing: 0.06em; }
+  .status.err { color: #ff6b5e; }
+
+  .board { flex: 1; padding: 8px 28px 24px; }
+  .colhead, .row {
+    display: grid;
+    grid-template-columns: 1.4fr 0.8fr 1fr 1fr 0.9fr 0.9fr 1fr;
+    gap: 12px; align-items: center;
+    padding: 12px 16px;
+  }
+  .colhead {
+    color: var(--amber-dim); font-size: 13px; letter-spacing: 0.22em;
+    border-bottom: 1px solid #2a2a24;
+  }
+  .row {
+    background: var(--row);
+    border: 1px solid #26261f;
+    border-radius: 6px;
+    margin-top: 8px;
+    font-size: clamp(19px, 2.4vw, 30px);
+  }
+  .row.nearest { border-color: var(--amber); box-shadow: 0 0 0 1px var(--amber) inset; }
+  .flight { color: var(--amber); font-weight: 700; letter-spacing: 0.08em; }
+  .tag {
+    display: inline-block; font-size: 11px; letter-spacing: 0.14em;
+    border: 1px solid var(--amber); color: var(--amber);
+    border-radius: 3px; padding: 2px 6px; margin-left: 10px; vertical-align: middle;
+  }
+  .airline-badge {
+    display: inline-block; background: #fff; color: #111;
+    border-radius: 999px; padding: 3px 9px 3px 5px;
+    font-size: 12px; letter-spacing: 0.06em; vertical-align: middle; margin-left: 10px;
+  }
+  .airline-badge img { height: 14px; vertical-align: middle; margin-right: 5px; }
+  .num { font-variant-numeric: tabular-nums; }
+  .wing { font-size: 0.6em; letter-spacing: 0.14em; }
+  .dim { color: var(--muted); font-size: 0.6em; letter-spacing: 0.1em; }
+  .up { color: var(--green); } .down { color: #ff8c5e; }
+  .empty {
+    text-align: center; color: var(--muted); padding: 60px 20px;
+    font-size: 17px; line-height: 1.7; letter-spacing: 0.04em;
+  }
+  .bigboard { flex: 1; padding: 32px 28px; text-align: center; }
+  .big-label { color: var(--amber-dim); font-size: 15px; letter-spacing: 0.3em; }
+  .big-callsign {
+    color: var(--amber); font-weight: 700; letter-spacing: 0.06em; line-height: 1.1;
+    font-size: clamp(64px, 13vw, 180px); margin-top: 12px;
+  }
+  .big-callsign .airline-badge {
+    font-size: clamp(24px, 3vw, 44px);
+    padding: 10px 26px 10px 16px;
+    margin-left: 24px;
+    border-left-width: 8px !important;
+  }
+  .big-callsign .airline-badge img {
+    height: clamp(48px, 8vw, 100px);
+    margin-right: 14px;
+  }
+  .big-callsign .tag { font-size: 16px; }
+  .big-sub { color: var(--muted); font-size: clamp(18px, 2.5vw, 30px); letter-spacing: 0.12em; margin-top: 8px; }
+  .big-empty { color: var(--muted); font-size: 20px; line-height: 1.7; padding-top: 40px; }
+  .big-grid {
+    display: flex; flex-wrap: wrap; gap: 28px 56px;
+    justify-content: center; margin-top: 40px;
+  }
+  .big-cell .v { font-size: clamp(34px, 5vw, 64px); font-variant-numeric: tabular-nums; }
+  .big-cell .k { color: var(--muted); font-size: 14px; letter-spacing: 0.22em; margin-top: 6px; }
+  footer {
+    padding: 12px 28px 18px; color: var(--muted);
+    font-size: 12.5px; letter-spacing: 0.05em; line-height: 1.6;
+    border-top: 1px solid #2a2a24;
+  }
+  @media (max-width: 700px) {
+    .colhead, .row { grid-template-columns: 1.3fr 0.9fr 0.9fr 0.8fr; }
+    .colhead .hide-m, .row .hide-m { display: none; }
+    header, .controls, .board, footer { padding-left: 14px; padding-right: 14px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>✈ LIVE <span>SKIES</span></h1>
+  <div class="live"><span class="dot"></span> LIVE BOARD</div>
+  <div class="meta">CENTER <b id="centerName">LOGAN, UT</b> &nbsp;·&nbsp; AIRSPACE <b id="artccName">—</b> &nbsp;·&nbsp; <span id="clock">--:--:--</span></div>
+</header>
+
+<div class="controls">
+  <label for="radius">RANGE</label>
+  <select id="radius">
+    <option value="25">25 mi</option>
+    <option value="50" selected>50 mi</option>
+    <option value="100">100 mi</option>
+    <option value="custom">Custom…</option>
+  </select>
+  <input id="customRadius" type="number" min="5" max="250" step="5" placeholder="miles" title="Custom range in miles (5–250)">
+  <button id="locBtn" title="Use this device's location">⌖ Use my location</button>
+  <button id="homeBtn" class="active" title="Back to Logan">Logan</button>
+  <input id="favName" type="text" maxlength="40" placeholder="Name this place…" title="Name for the current location">
+  <button id="saveFavBtn" title="Save the current location as a named favorite">★ Save favorite</button>
+  <select id="favSelect" title="Jump to a saved place">
+    <option value="">★ Saved places…</option>
+  </select>
+  <button id="removeFavBtn" title="Remove the selected saved place">Remove place</button>
+  <button id="demoBtn" title="Preview with simulated flights">Demo flights</button>
+  <button id="bigBtn" title="Toggle the large single-aircraft display">Big display</button>
+  <button id="fullBtn" title="Go fullscreen">⛶ Fullscreen</button>
+  <span class="status" id="status">Connecting to OpenSky…</span>
+</div>
+
+<div class="board">
+  <div class="colhead">
+    <div>FLIGHT</div><div class="hide-m">TYPE</div><div>ALTITUDE</div><div>SPEED</div>
+    <div>HEADING</div><div class="hide-m">DISTANCE</div><div class="hide-m">VERTICAL</div>
+  </div>
+  <div id="rows"></div>
+</div>
+<div class="bigboard" id="bigboard" style="display:none;"></div>
+
+<footer>
+  Data: live ADS-B feeds, tried in order — airplanes.live, adsb.lol, adsb.fi, AvioADSB, OpenSky Network (all free, no key).
+  The status line shows which source is active. Callsign, rotor/fixed-wing type, altitude, speed, heading, distance and climb/descent.
+  Coverage depends on volunteer receivers, so some aircraft may not appear. The free feed does not include origin/destination — that takes a paid flight-data service.
+  Refreshes every 15 seconds. Favorites and your custom range live in this browser's own storage, so they work best when the file is opened directly rather than in a preview.
+  Tip: open in your browser and press F11 for a full-screen flight wall.
+  Smart TV: open this board from the TV's browser using your computer's network address (printed when the server starts) — same Wi-Fi, computer stays awake.
+  When served by flight-wall-server.py, the board reads one aggregated feed built from all five sources at once.
+  Controlling Center is approximate (nearest Center facility) — near a boundary, the true controlling Center may differ.
+  Big display: a large single-aircraft view of the nearest aircraft above 15,000 ft AGL (approximate — Logan field elevation used as ground reference) — toggle it from the controls. Aircraft model shows beside the AGL figure when the feed provides it.
+</footer>
+
+<script>
+(function () {
+  var HOME = { name: "LOGAN, UT", lat: 41.7370, lon: -111.8338 };
+  // Big display: nearest aircraft above this height above ground, in feet.
+  // Feeds report MSL altitude, so AGL is estimated with the Logan-Cache
+  // Airport field elevation (4,457 ft) as the ground reference — exact near
+  // Logan, approximate elsewhere, and always shown with ≈.
+  var BIG_MIN_FT = 15000;
+  var GROUND_ELEV_FT = 4457;
+  var bigMode = false;
+  var lastFlights = [];
+  var center = HOME;
+  var radiusMi = 50;
+  var demo = false;
+  // Aggregator mode: the page first tries /api/flights on whatever host
+  // served it (localhost, a LAN address like 192.168.x.x or 10.0.0.x for
+  // a smart TV, or a cloud host like Render). Server-side fetching has
+  // no browser CORS issues and no single point of failure. LOCAL_API
+  // only records whether this host is a local one: on a local host a
+  // failed aggregator call is fatal, while on any other host the page
+  // falls back to calling the feeds directly from the browser.
+  var LOCAL_API = (/^(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)$/.test(window.location.hostname)) ? '/api/flights' : null;
+  var timer = null, countdownTimer = null, nextIn = 15;
+  var demoFlights = [];
+
+  var rowsEl = document.getElementById('rows');
+  var statusEl = document.getElementById('status');
+  var clockEl = document.getElementById('clock');
+  var centerEl = document.getElementById('centerName');
+  var bigboardEl = document.getElementById('bigboard');
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function tickClock() {
+    var d = new Date();
+    clockEl.textContent = pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds());
+  }
+  setInterval(tickClock, 1000); tickClock();
+
+  function haversineMi(lat1, lon1, lat2, lon2) {
+    var R = 3958.8, dLa = (lat2 - lat1) * Math.PI / 180, dLo = (lon2 - lon1) * Math.PI / 180;
+    var a = Math.sin(dLa / 2) * Math.sin(dLa / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLo / 2) * Math.sin(dLo / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+  function compass(deg) {
+    if (deg == null) return '—';
+    var pts = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+    return pts[Math.round(deg / 22.5) % 16];
+  }
+  // Airline brand badges, keyed off the callsign prefix (DAL, SWA, ...).
+  // The logo image is attempted from a keyless logo service; if it fails or
+  // the airline has no logo there, the name badge still shows.
+  var AIRLINES = {
+    DAL: { name: 'Delta', domain: 'delta.com', bg: '#C8102E' },
+    SWA: { name: 'Southwest', domain: 'southwest.com', bg: '#D5152F' },
+    UAL: { name: 'United', domain: 'united.com', bg: '#002244' },
+    AAL: { name: 'American', domain: 'aa.com', bg: '#C41230' },
+    ASA: { name: 'Alaska', domain: 'alaskaair.com', bg: '#01426A' },
+    JBU: { name: 'JetBlue', domain: 'jetblue.com', bg: '#00205B' },
+    SKW: { name: 'SkyWest', domain: 'skywest.com', bg: '#003A70' },
+    EDV: { name: 'Endeavor Air', domain: 'endeavorair.com', bg: '#003366' },
+    RPA: { name: 'Republic', domain: 'rjet.com', bg: '#00205B' },
+    FFT: { name: 'Frontier', domain: 'flyfrontier.com', bg: '#006643' },
+    AAY: { name: 'Allegiant', domain: 'allegiantair.com', bg: '#0072CE' },
+    NKS: { name: 'Spirit', domain: 'spirit.com', bg: '#F5C400' },
+    SCX: { name: 'Sun Country', domain: 'suncountry.com', bg: '#FF6A13' },
+    FDX: { name: 'FedEx', domain: 'fedex.com', bg: '#4D148C' },
+    UPS: { name: 'UPS', domain: 'ups.com', bg: '#351C15' },
+    JSX: { name: 'JSX', domain: 'jsx.com', bg: '#111111' }
+  };
+  function airlineFor(callsign) {
+    var prefix = (callsign || '').trim().substring(0, 3).toUpperCase();
+    if (!/^[A-Z]{3}$/.test(prefix)) return null;
+    return AIRLINES[prefix] || null;
+  }
+  // Rotor vs fixed wing. The ADS-B emitter category is the reliable signal
+  // when a feed provides it (A7 = rotorcraft). Known helicopter type codes
+  // cover feeds that don't send a category. A0 means "no category info" and
+  // must not read as fixed wing; feeds that provide neither (OpenSky) show —.
+  var HELI_TYPES = {
+    R22: 1, R44: 1, R66: 1, B06: 1, B407: 1, B429: 1, B412: 1, B212: 1, B205: 1,
+    H60: 1, S70: 1, AS50: 1, H125: 1, AS55: 1, H130: 1, EC30: 1, EC35: 1, H135: 1,
+    EC45: 1, H145: 1, EC55: 1, H155: 1, MD50: 1, MD60: 1, MD90: 1, S76: 1, S92: 1,
+    A109: 1, A119: 1, A139: 1, B105: 1, BK17: 1, H47: 1, H53: 1, V22: 1, CH7B: 1
+  };
+  function wingType(f) {
+    if (f.category === 'A7') return 'ROTOR';
+    if (f.acType && HELI_TYPES[f.acType.toUpperCase()]) return 'ROTOR';
+    if (f.category === 'B1') return 'FIXED'; // glider
+    if (f.category && f.category.charAt(0) === 'A' && f.category !== 'A0') return 'FIXED';
+    return '—';
+  }
+  // Controlling Center, approximated by nearest Center facility (namesake
+  // city coordinates). Correct for interior locations like Smithfield/Logan
+  // (Salt Lake Center); near a boundary the true controlling Center may
+  // differ — boundary-exact lookup needs the FAA boundary polygons.
+  var ARTCCS = [
+    { code: 'ZAB', name: 'Albuquerque', lat: 35.0844, lon: -106.6504 },
+    { code: 'ZAN', name: 'Anchorage', lat: 61.2181, lon: -149.9003 },
+    { code: 'ZTL', name: 'Atlanta', lat: 33.7490, lon: -84.3880 },
+    { code: 'ZBW', name: 'Boston', lat: 42.3601, lon: -71.0589 },
+    { code: 'ZAU', name: 'Chicago', lat: 41.8781, lon: -87.6298 },
+    { code: 'ZOB', name: 'Cleveland', lat: 41.4993, lon: -81.6944 },
+    { code: 'ZDV', name: 'Denver', lat: 39.7392, lon: -104.9903 },
+    { code: 'ZFW', name: 'Fort Worth', lat: 32.7555, lon: -97.3308 },
+    { code: 'ZHN', name: 'Honolulu', lat: 21.3099, lon: -157.8581 },
+    { code: 'ZHU', name: 'Houston', lat: 29.7604, lon: -95.3698 },
+    { code: 'ZID', name: 'Indianapolis', lat: 39.7684, lon: -86.1581 },
+    { code: 'ZJX', name: 'Jacksonville', lat: 30.3322, lon: -81.6557 },
+    { code: 'ZKC', name: 'Kansas City', lat: 39.0997, lon: -94.5786 },
+    { code: 'ZLA', name: 'Los Angeles', lat: 34.0522, lon: -118.2437 },
+    { code: 'ZME', name: 'Memphis', lat: 35.1495, lon: -90.0490 },
+    { code: 'ZMA', name: 'Miami', lat: 25.7617, lon: -80.1918 },
+    { code: 'ZMP', name: 'Minneapolis', lat: 44.9778, lon: -93.2650 },
+    { code: 'ZNY', name: 'New York', lat: 40.7128, lon: -74.0060 },
+    { code: 'ZOA', name: 'Oakland', lat: 37.8044, lon: -122.2711 },
+    { code: 'ZLC', name: 'Salt Lake City', lat: 40.7608, lon: -111.8910 },
+    { code: 'ZSE', name: 'Seattle', lat: 47.6062, lon: -122.3321 },
+    { code: 'ZDC', name: 'Washington', lat: 38.9072, lon: -77.0369 }
+  ];
+  function nearestArtcc(lat, lon) {
+    var best = null, bestDist = Infinity;
+    ARTCCS.forEach(function (c) {
+      var d = haversineMi(lat, lon, c.lat, c.lon);
+      if (d < bestDist) { bestDist = d; best = c; }
+    });
+    return best;
+  }
+  function updateArtcc() {
+    var c = nearestArtcc(center.lat, center.lon);
+    var el = document.getElementById('artccName');
+    if (el && c) el.textContent = c.name.toUpperCase() + ' CENTER (' + c.code + ')';
+  }
+  function fmtAlt(m) {
+    if (m == null) return '—';
+    return Math.round(m * 3.28084 / 100) * 100;
+  }
+  function fmtKt(ms) {
+    if (ms == null) return '—';
+    return Math.round(ms * 1.94384);
+  }
+  function fmtVs(ms) {
+    if (ms == null) return '';
+    var fpm = Math.round(ms * 196.85);
+    if (Math.abs(fpm) < 100) return '<span class="dim">LEVEL</span>';
+    return fpm > 0 ? '<span class="up">▲ +' + fpm + '</span>' : '<span class="down">▼ ' + fpm + '</span>';
+  }
+  function fmtVsFpm(fpm) {
+    if (fpm == null) return '';
+    var v = Math.round(fpm);
+    if (Math.abs(v) < 100) return '<span class="dim">LEVEL</span>';
+    return v > 0 ? '<span class="up">▲ +' + v + '</span>' : '<span class="down">▼ ' + v + '</span>';
+  }
+  function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;'); }
+
+  function render(flights) {
+    lastFlights = flights;
+    if (bigMode) renderBig(flights); else renderBoard(flights);
+  }
+  function renderBig(flights) {
+    var q = flights.filter(function (f) { return typeof f.alt === 'number' && (f.alt - GROUND_ELEV_FT) > BIG_MIN_FT; });
+    q.sort(function (a, b) { return a.dist - b.dist; });
+    if (!q.length) {
+      bigboardEl.innerHTML = '<div class="big-label">NEAREST ABOVE 15,000 FT AGL</div>' +
+        '<div class="big-empty">No aircraft above 15,000 ft AGL right now.<br>Check back in a minute, or widen the range.</div>';
+      return;
+    }
+    var f = q[0];
+    var modelTxt = f.model || f.acType;
+    bigboardEl.innerHTML =
+      '<div class="big-label">NEAREST ABOVE 15,000 FT AGL</div>' +
+      '<div class="big-callsign">' + esc(f.callsign) +
+      (f.airline ? '<span class="airline-badge" style="border-left:4px solid ' + f.airline.bg + '"><img src="https://logo.debounce.com/' + f.airline.domain + '" alt="" onerror="this.remove()">' + f.airline.name + '</span>' : '') +
+      '<span class="tag">' + wingType(f) + '</span></div>' +
+      '<div class="big-sub">≈ ' + (f.alt - GROUND_ELEV_FT).toLocaleString() + ' FT AGL' + (modelTxt ? ' · ' + esc(modelTxt) : '') + '</div>' +
+      '<div class="big-grid">' +
+      '<div class="big-cell"><div class="v">' + f.alt.toLocaleString() + '</div><div class="k">ALTITUDE · FT MSL</div></div>' +
+      '<div class="big-cell"><div class="v">' + f.spd + '</div><div class="k">SPEED · KT</div></div>' +
+      '<div class="big-cell"><div class="v">' + (f.hdg == null ? '—' : Math.round(f.hdg) + '° ' + compass(f.hdg)) + '</div><div class="k">HEADING</div></div>' +
+      '<div class="big-cell"><div class="v">' + f.dist.toFixed(1) + '</div><div class="k">DISTANCE · MI</div></div>' +
+      '<div class="big-cell"><div class="v">' + f.vs + '</div><div class="k">VERTICAL · FPM</div></div>' +
+      '</div>';
+  }
+  function renderBoard(flights) {
+    if (!flights.length) {
+      rowsEl.innerHTML = '<div class="empty">No aircraft currently reporting in this area.<br>' +
+        'Coverage depends on volunteer ADS-B receivers — check back in a minute, or try a wider range.</div>';
+      return;
+    }
+    flights.sort(function (a, b) { return a.dist - b.dist; });
+    var html = '';
+    flights.slice(0, 30).forEach(function (f, i) {
+      html += '<div class="row' + (i === 0 ? ' nearest' : '') + '">' +
+        '<div class="flight">' + esc(f.callsign) +
+        (f.airline ? '<span class="airline-badge" style="border-left:4px solid ' + f.airline.bg + '"><img src="https://logo.debounce.com/' + f.airline.domain + '" alt="" onerror="this.remove()">' + f.airline.name + '</span>' : '') +
+        (i === 0 ? '<span class="tag">NEAREST</span>' : '') + '</div>' +
+        '<div class="wing hide-m">' + wingType(f) + '</div>' +
+        '<div class="num">' + (f.alt === '—' ? '—' : f.alt.toLocaleString()) + ' <span class="dim">FT</span></div>' +
+        '<div class="num">' + f.spd + ' <span class="dim">KT</span></div>' +
+        '<div class="num">' + (f.hdg == null ? '—' : Math.round(f.hdg) + '° ' + compass(f.hdg)) + '</div>' +
+        '<div class="num hide-m">' + f.dist.toFixed(1) + ' <span class="dim">MI</span></div>' +
+        '<div class="num hide-m">' + f.vs + ' <span class="dim">FPM</span></div>' +
+        '</div>';
+    });
+    rowsEl.innerHTML = html;
+  }
+
+  function normalize(states) {
+    return states
+      .filter(function (s) { return s && s[5] != null && s[6] != null && !s[8]; })
+      .map(function (s) {
+        var cs = (s[1] || '').trim();
+        // OpenSky category is index 17 (0-20); map the useful ones to ADS-B
+        // letters. OpenSky sends no type code or model name.
+        var osCat = { 2: 'A1', 3: 'A2', 4: 'A3', 5: 'A4', 6: 'A5', 7: 'A6', 8: 'A7', 9: 'B1' }[s[17]];
+        return {
+          callsign: cs || ('ICAO ' + s[0].toUpperCase()),
+          airline: airlineFor(cs),
+          category: osCat || null, acType: null, model: null,
+          alt: fmtAlt(s[7] != null ? s[7] : s[13]),
+          spd: fmtKt(s[9]),
+          hdg: s[10],
+          vs: fmtVs(s[11]),
+          dist: haversineMi(center.lat, center.lon, s[6], s[5])
+        };
+      });
+  }
+
+  function setStatus(msg, isErr) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (isErr ? ' err' : '');
+  }
+
+  function fetchOpenSky() {
+    var dLat = radiusMi / 69;
+    var dLon = radiusMi / (69 * Math.cos(center.lat * Math.PI / 180));
+    var url = 'https://opensky-network.org/api/states/all' +
+      '?lamin=' + (center.lat - dLat).toFixed(4) +
+      '&lamax=' + (center.lat + dLat).toFixed(4) +
+      '&lomin=' + (center.lon - dLon).toFixed(4) +
+      '&lomax=' + (center.lon + dLon).toFixed(4);
+    return fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) { return normalize(data.states || []); });
+  }
+
+  // adsb-format feeds (adsb.fi, adsb.lol, airplanes.live, AvioADSB) share the
+  // readsb-style { ac: [...] } shape. Their point queries take distance in
+  // nautical miles, and altitudes/speeds arrive already in feet and knots.
+  function fetchAdsb(url) {
+    return fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        var ac = data.ac || data.aircraft || [];
+        return ac
+          .filter(function (a) { return a && a.lat != null && a.lon != null && a.alt_baro !== 'ground'; })
+          .map(function (a) {
+            return {
+              callsign: ((a.flight || '').trim() || ('ICAO ' + (a.hex || '').toUpperCase())),
+              airline: airlineFor((a.flight || '').trim()),
+              category: (a.category || null),
+              acType: ((a.t || '').trim() || null),
+              model: (a.desc || null),
+              alt: (a.alt_baro != null ? Math.round(a.alt_baro) : (a.alt_geom != null ? Math.round(a.alt_geom) : '—')),
+              spd: (a.gs != null ? Math.round(a.gs) : '—'),
+              hdg: a.track,
+              vs: fmtVsFpm(a.baro_rate != null ? a.baro_rate : (a.geom_rate != null ? a.geom_rate : a.vert_rate)),
+              dist: haversineMi(center.lat, center.lon, a.lat, a.lon)
+            };
+          });
+      });
+  }
+
+  // Fallback chain, tried in order. The app sticks with whichever source is
+  // working (so it doesn't burn every feed's quota on every refresh) and only
+  // moves down the chain when the active source fails.
+  function adsbUrl(base, path) {
+    var nm = Math.round(radiusMi / 1.15078);
+    return base + path.replace('{lat}', center.lat.toFixed(4)).replace('{lon}', center.lon.toFixed(4)).replace('{nm}', nm);
+  }
+  var SOURCES = [
+    { name: 'airplanes.live', fetch: function () { return fetchAdsb(adsbUrl('https://api.airplanes.live', '/v2/point/{lat}/{lon}/{nm}')); } },
+    { name: 'adsb.lol', fetch: function () { return fetchAdsb(adsbUrl('https://api.adsb.lol', '/v2/point/{lat}/{lon}/{nm}')); } },
+    { name: 'adsb.fi', fetch: function () { return fetchAdsb(adsbUrl('https://opendata.adsb.fi/api', '/v3/lat/{lat}/lon/{lon}/dist/{nm}')); } },
+    { name: 'AvioADSB', fetch: function () { return fetchAdsb(adsbUrl('https://avioadsb.org', '/v1/point/{lat}/{lon}/{nm}')); } },
+    { name: 'OpenSky', fetch: fetchOpenSky }
+  ];
+  var activeSource = 0;
+
+  function fetchLocal(allowFallback) {
+    var url = '/api/flights?lat=' + center.lat.toFixed(4) + '&lon=' + center.lon.toFixed(4) + '&radius=' + radiusMi;
+    setStatus('Updating (aggregated feed)…');
+    fetch(url)
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        var flights = (data.flights || []).map(function (f) {
+          return {
+            callsign: f.callsign, airline: airlineFor(f.callsign),
+            category: (f.category || null), acType: (f.ac_type || null),
+            model: (f.model || null),
+            alt: (f.alt_ft != null ? Math.round(f.alt_ft) : '—'),
+            spd: (f.spd_kt != null ? Math.round(f.spd_kt) : '—'),
+            hdg: f.hdg, vs: fmtVsFpm(f.vs_fpm), dist: f.dist_mi
+          };
+        });
+        render(flights);
+        var t = new Date();
+        var ok = (data.sources || []).filter(function (s) { return s.ok; }).length;
+        var total = (data.sources || []).length;
+        setStatus('Aggregated feed · ' + ok + '/' + total + ' sources · Updated ' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds()) +
+          ' · ' + flights.length + ' aircraft · next refresh in 15s');
+      })
+      .catch(function (e) {
+        if (allowFallback) { fetchWithFallback(); return; }
+        setStatus('Aggregator unreachable (' + e.message + '). Is flight-wall-server.py running on your computer?', true);
+      });
+  }
+
+  function fetchWithFallback() {
+    var order = [];
+    for (var j = activeSource; j < SOURCES.length; j++) order.push(j);
+    for (var k = 0; k < activeSource; k++) order.push(k);
+    var attempt = 0;
+    var errors = [];
+    setStatus('Updating…');
+    (function tryNext() {
+      if (attempt >= order.length) {
+        // Quiet sky, not a failure: every feed answered, all came back empty.
+        var allEmpty = errors.length > 0 && errors.every(function (e) { return e.indexOf('returned no aircraft') !== -1; });
+        if (allEmpty) {
+          setStatus('No aircraft currently reporting in this area — quiet sky. Retrying in 15s.', false);
+          rowsEl.innerHTML = '<div class="empty">No aircraft currently reporting in this area.<br>' +
+            'Coverage depends on volunteer ADS-B receivers — check back in a minute, or try a wider range.</div>';
+        } else {
+          setStatus('All feeds unreachable — see diagnostics below. Retrying in 15s, or try Demo flights.', true);
+          var html = '<div class="empty">Could not reach any feed.<br><br>';
+          errors.forEach(function (e) { html += esc(e) + '<br>'; });
+          html += '<br>If every source says "Failed to fetch", this page is being blocked from reaching the internet — ' +
+            'that happens inside embedded previews. Download this file and open it directly in your browser instead.</div>';
+          rowsEl.innerHTML = html;
+        }
+        return;
+      }
+      var idx = order[attempt++];
+      var src = SOURCES[idx];
+      src.fetch().then(function (flights) {
+        // An empty result must not mask a full one: if this feed has nothing
+        // in range, fall through to the next source instead of showing blank.
+        if (!flights.length) {
+          errors.push(src.name + ': returned no aircraft');
+          tryNext();
+          return;
+        }
+        activeSource = idx;
+        render(flights);
+        var t = new Date();
+        setStatus('Source: ' + src.name + ' · Updated ' + pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds()) +
+          ' · ' + flights.length + ' aircraft · next refresh in 15s');
+      }).catch(function (err) {
+        errors.push(src.name + ': ' + (err && err.message ? err.message : 'failed'));
+        tryNext();
+      });
+    })();
+  }
+
+  function seedDemo() {
+    var prefixes = ['DAL', 'SWA', 'UAL', 'AAL', 'FDX', 'UPS', 'ASA', 'JBU', 'SKW'];
+    demoFlights = [];
+    for (var i = 0; i < 10; i++) {
+      var ang = Math.random() * Math.PI * 2, d = 5 + Math.random() * (radiusMi - 5);
+      var isHeli = (i === 9);
+      demoFlights.push({
+        callsign: isHeli ? 'AIRMED1' : prefixes[i % prefixes.length] + (100 + Math.floor(Math.random() * 8900)),
+        category: isHeli ? 'A7' : null,
+        acType: isHeli ? 'B407' : null,
+        model: isHeli ? 'BELL 407' : ['BOEING 737-800', 'AIRBUS A320', 'BOEING 737 MAX 9', 'EMBRAER 175'][i % 4],
+        alt: isHeli ? 4000 + Math.floor(Math.random() * 3000) : 8000 + Math.floor(Math.random() * 32000),
+        spd: isHeli ? 90 + Math.floor(Math.random() * 50) : 200 + Math.floor(Math.random() * 300),
+        hdg: Math.floor(Math.random() * 360),
+        vs: Math.random() < 0.3 ? '' : (Math.random() < 0.5 ? '▲ +' : '▼ -') + (200 + Math.floor(Math.random() * 1800)),
+        dist: d,
+        lat: center.lat + Math.sin(ang) * d / 69,
+        lon: center.lon + Math.cos(ang) * d / (69 * Math.cos(center.lat * Math.PI / 180))
+      });
+    }
+  }
+  function fetchDemo() {
+    demoFlights.forEach(function (f) {
+      f.dist = Math.max(2, f.dist + (Math.random() - 0.5) * 2);
+      f.alt = Math.max(3000, f.alt + Math.floor((Math.random() - 0.5) * 400));
+    });
+    var flights = demoFlights.map(function (f) {
+      return {
+        callsign: f.callsign, airline: airlineFor(f.callsign), alt: f.alt, spd: f.spd, hdg: f.hdg,
+        category: f.category || null, acType: f.acType || null, model: f.model || null,
+        vs: f.vs ? (f.vs.indexOf('▲') === 0 ? '<span class="up">' + f.vs + '</span>' : '<span class="down">' + f.vs + '</span>') : '<span class="dim">LEVEL</span>',
+        dist: f.dist
+      };
+    });
+    render(flights);
+    setStatus('Demo mode · ' + flights.length + ' simulated aircraft · next refresh in 15s');
+  }
+
+  function refresh() {
+    nextIn = 15;
+    // Always try the aggregator first: on a local host or a cloud host
+    // (Render) it answers; anywhere else it fails fast and the page
+    // falls back to calling the feeds directly.
+    if (demo) fetchDemo(); else if (LOCAL_API) fetchLocal(false); else fetchLocal(true);
+  }
+  function startLoop() {
+    if (timer) clearInterval(timer);
+    if (countdownTimer) clearInterval(countdownTimer);
+    refresh();
+    timer = setInterval(refresh, 15000);
+    countdownTimer = setInterval(function () {
+      nextIn -= 1;
+      if (nextIn <= 0) return;
+      var txt = statusEl.textContent.replace(/next refresh in \d+s/, 'next refresh in ' + nextIn + 's');
+      statusEl.textContent = txt;
+    }, 1000);
+  }
+
+  document.getElementById('radius').addEventListener('change', function (e) {
+    var customInput = document.getElementById('customRadius');
+    if (e.target.value === 'custom') {
+      customInput.style.display = 'inline-block';
+      if (!customInput.value) customInput.value = radiusMi;
+      radiusMi = clampRadius(parseInt(customInput.value, 10) || radiusMi);
+      customInput.value = radiusMi;
+    } else {
+      customInput.style.display = 'none';
+      radiusMi = parseInt(e.target.value, 10);
+    }
+    if (demo) seedDemo();
+    refresh();
+  });
+  function clampRadius(v) {
+    if (isNaN(v)) return 50;
+    return Math.max(5, Math.min(250, v));
+  }
+  document.getElementById('customRadius').addEventListener('change', function (e) {
+    radiusMi = clampRadius(parseInt(e.target.value, 10));
+    e.target.value = radiusMi;
+    if (demo) seedDemo();
+    refresh();
+  });
+
+  // Favorites: named places saved in this browser (localStorage). Saving the
+  // current center lets a "Use my location" spot be recalled by name later.
+  function loadFavs() {
+    try { return JSON.parse(localStorage.getItem('flightWallFavorites') || '[]'); }
+    catch (e) { return []; }
+  }
+  function storeFavs(favs) {
+    try { localStorage.setItem('flightWallFavorites', JSON.stringify(favs)); } catch (e) {}
+  }
+  function renderFavSelect() {
+    var sel = document.getElementById('favSelect');
+    var current = sel.value;
+    sel.innerHTML = '<option value="">★ Saved places…</option>';
+    loadFavs().forEach(function (f) {
+      var opt = document.createElement('option');
+      opt.value = f.name;
+      opt.textContent = f.name;
+      sel.appendChild(opt);
+    });
+    sel.value = current;
+  }
+  function clearFavSelection() {
+    document.getElementById('favSelect').value = '';
+  }
+  document.getElementById('saveFavBtn').addEventListener('click', function () {
+    var input = document.getElementById('favName');
+    var favs = loadFavs();
+    var name = input.value.trim() || ('Place ' + (favs.length + 1));
+    var existing = null;
+    favs.forEach(function (f) { if (f.name === name) existing = f; });
+    if (existing) {
+      existing.lat = center.lat; existing.lon = center.lon;
+    } else {
+      favs.push({ name: name, lat: center.lat, lon: center.lon });
+    }
+    storeFavs(favs);
+    renderFavSelect();
+    document.getElementById('favSelect').value = name;
+    input.value = '';
+    setStatus('Saved favorite "' + name + '" (' + center.lat.toFixed(3) + ', ' + center.lon.toFixed(3) + ').');
+  });
+  document.getElementById('favSelect').addEventListener('change', function (e) {
+    var name = e.target.value;
+    if (!name) return;
+    var found = null;
+    loadFavs().forEach(function (f) { if (f.name === name) found = f; });
+    if (!found) return;
+    center = { name: found.name.toUpperCase(), lat: found.lat, lon: found.lon };
+    centerEl.textContent = center.name;
+    updateArtcc();
+    document.getElementById('homeBtn').classList.remove('active');
+    document.getElementById('locBtn').classList.remove('active');
+    if (demo) seedDemo();
+    refresh();
+  });
+  document.getElementById('removeFavBtn').addEventListener('click', function () {
+    var sel = document.getElementById('favSelect');
+    var name = sel.value;
+    if (!name) { setStatus('Pick a saved place first, then Remove place.', true); return; }
+    storeFavs(loadFavs().filter(function (f) { return f.name !== name; }));
+    renderFavSelect();
+    if (center.name === name.toUpperCase()) {
+      center = HOME; centerEl.textContent = HOME.name;
+      updateArtcc();
+      document.getElementById('homeBtn').classList.add('active');
+      refresh();
+    }
+    setStatus('Removed favorite "' + name + '".');
+  });
+  document.getElementById('homeBtn').addEventListener('click', function (e) {
+    center = HOME; centerEl.textContent = HOME.name;
+    updateArtcc();
+    e.target.classList.add('active');
+    document.getElementById('locBtn').classList.remove('active');
+    clearFavSelection();
+    if (demo) seedDemo();
+    refresh();
+  });
+  document.getElementById('locBtn').addEventListener('click', function (e) {
+    if (!navigator.geolocation) { setStatus('Geolocation is not available in this browser.', true); return; }
+    setStatus('Locating…');
+    navigator.geolocation.getCurrentPosition(function (pos) {
+      center = { name: 'YOUR LOCATION', lat: pos.coords.latitude, lon: pos.coords.longitude };
+      centerEl.textContent = 'YOUR LOCATION (' + center.lat.toFixed(2) + ', ' + center.lon.toFixed(2) + ')';
+      updateArtcc();
+      e.target.classList.add('active');
+      document.getElementById('homeBtn').classList.remove('active');
+      clearFavSelection();
+      if (demo) seedDemo();
+      refresh();
+    }, function () {
+      setStatus('Could not get your location — staying on Logan.', true);
+    });
+  });
+  document.getElementById('demoBtn').addEventListener('click', function (e) {
+    demo = !demo;
+    e.target.classList.toggle('active', demo);
+    if (demo) seedDemo();
+    refresh();
+  });
+  document.getElementById('bigBtn').addEventListener('click', function (e) {
+    bigMode = !bigMode;
+    e.target.classList.toggle('active', bigMode);
+    document.querySelector('.board').style.display = bigMode ? 'none' : '';
+    bigboardEl.style.display = bigMode ? '' : 'none';
+    if (lastFlights.length) render(lastFlights); else refresh();
+  });
+  document.getElementById('fullBtn').addEventListener('click', function () {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen && document.documentElement.requestFullscreen();
+  });
+
+  renderFavSelect();
+  updateArtcc();
+  startLoop();
+})();
+</script>
+</body>
+</html>

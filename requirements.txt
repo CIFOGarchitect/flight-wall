@@ -1,0 +1,3 @@
+# Standard library only — no dependencies.
+# This file exists so Render's Python environment has a requirements
+# file to install (it installs nothing).

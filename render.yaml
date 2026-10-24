@@ -1,0 +1,16 @@
+# Render Blueprint for the Flight Wall board.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> connect the repo
+# containing this file, flight-wall.html, flight-wall-server.py and
+# requirements.txt.
+#
+# The free plan runs the Python server as-is (standard library only,
+# so the build is just pip installing an empty requirements file).
+# Render assigns a port via the PORT environment variable, which
+# flight-wall-server.py already reads.
+services:
+  - type: web
+    name: flight-wall
+    env: python
+    plan: free
+    startCommand: python flight-wall-server.py

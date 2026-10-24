@@ -69,6 +69,7 @@
   .controls input { cursor: text; }
   #customRadius { width: 84px; display: none; }
   #favName { width: 170px; }
+  #cityInput { width: 200px; }
   .controls button:hover { border-color: var(--amber); color: var(--amber); }
   .controls button.active { border-color: var(--amber); color: var(--amber); }
   .status { margin-left: auto; color: var(--muted); font-size: 13px; letter-spacing: 0.06em; }
@@ -168,6 +169,8 @@
   <input id="customRadius" type="number" min="5" max="250" step="5" placeholder="miles" title="Custom range in miles (5–250)">
   <button id="locBtn" title="Use this device's location">⌖ Use my location</button>
   <button id="homeBtn" class="active" title="Back to Logan">Logan</button>
+  <input id="cityInput" type="text" maxlength="80" placeholder="City, State (e.g. Boise, ID)" title="Type a city and state, then Go">
+  <button id="goCityBtn" title="Center the board on the typed city and state">Go</button>
   <input id="favName" type="text" maxlength="40" placeholder="Name this place…" title="Name for the current location">
   <button id="saveFavBtn" title="Save the current location as a named favorite">★ Save favorite</button>
   <select id="favSelect" title="Jump to a saved place">
@@ -743,6 +746,66 @@
     }, function () {
       setStatus('Could not get your location — staying on Logan.', true);
     });
+  });
+  // Manual place lookup: type "City, State" and the board centers there.
+  // This is the answer when geolocation is blocked or unavailable on a
+  // device. The server's /api/geocode is tried first (works wherever
+  // the board is served by flight-wall-server.py, including Render);
+  // otherwise Nominatim (OpenStreetMap) is called directly.
+  function shortPlaceName(address, fallback) {
+    if (!address) return fallback;
+    var place = address.city || address.town || address.village ||
+                address.municipality || address.county || '';
+    // Nominatim usually gives state_code, but sometimes only the ISO
+    // code ("US-ID") plus the full state name — prefer the abbreviation.
+    var state = address.state_code || '';
+    if (!state && address['ISO3166-2-lvl4']) {
+      var iso = address['ISO3166-2-lvl4'].split('-');
+      state = iso.length > 1 ? iso[1] : '';
+    }
+    if (!state) state = address.state || '';
+    if (place && state) return (place + ', ' + state).toUpperCase();
+    if (place) return place.toUpperCase();
+    return fallback;
+  }
+  function lookupPlace(q) {
+    var enc = encodeURIComponent(q);
+    return fetch('/api/geocode?q=' + enc)
+      .then(function (r) { if (!r.ok) throw new Error('no server geocode'); return r.json(); })
+      .then(function (d) { if (!d.found) throw new Error('not found'); return d; })
+      .catch(function () {
+        return fetch('https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=1&q=' + enc)
+          .then(function (r) { if (!r.ok) throw new Error('lookup failed'); return r.json(); })
+          .then(function (arr) {
+            if (!arr.length) throw new Error('not found');
+            var a = arr[0];
+            return { found: true, lat: parseFloat(a.lat), lon: parseFloat(a.lon),
+                     display_name: a.display_name, address: a.address || {} };
+          });
+      });
+  }
+  function goToCity() {
+    var input = document.getElementById('cityInput');
+    var q = input.value.trim();
+    if (!q) return;
+    setStatus('Looking up "' + q + '"…');
+    lookupPlace(q).then(function (d) {
+      var name = shortPlaceName(d.address, q.toUpperCase());
+      center = { name: name, lat: d.lat, lon: d.lon };
+      centerEl.textContent = name;
+      updateArtcc();
+      document.getElementById('homeBtn').classList.remove('active');
+      document.getElementById('locBtn').classList.remove('active');
+      clearFavSelection();
+      if (demo) seedDemo();
+      refresh();
+    }).catch(function () {
+      setStatus('Could not find "' + q + '" — try "City, State" (e.g. Boise, ID).', true);
+    });
+  }
+  document.getElementById('goCityBtn').addEventListener('click', goToCity);
+  document.getElementById('cityInput').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') goToCity();
   });
   document.getElementById('demoBtn').addEventListener('click', function (e) {
     demo = !demo;

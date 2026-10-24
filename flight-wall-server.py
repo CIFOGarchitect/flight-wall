@@ -5,7 +5,8 @@ Why this exists: browsers often refuse to call these feeds directly
 (sandboxed previews block the calls, and some feeds don't send the CORS
 headers browsers require). Server-side fetching has neither problem, so
 this script pulls every source at the same time, merges the results, and
-serves the flight-wall page plus one aggregated JSON feed.
+serves the flight-wall page, one aggregated JSON feed, and a /api/geocode
+place lookup (OpenStreetMap Nominatim).
 
 HOW TO RUN (keep this file in the same folder as flight-wall.html):
   Mac / Linux:   python3 flight-wall-server.py
@@ -44,7 +45,7 @@ import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, urlparse
 
 # Port: hosts like Render assign one via PORT; FLIGHT_WALL_PORT is the
 # manual override; otherwise 8000.
@@ -232,6 +233,30 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlparse(self.path)
+        if parsed.path == "/api/geocode":
+            qs = parse_qs(parsed.query)
+            q = (qs.get("q", [""])[0] or "").strip()
+            if not q:
+                return self._send(400, "missing q", "text/plain")
+            try:
+                data = fetch_json(
+                    "https://nominatim.openstreetmap.org/search"
+                    "?format=json&addressdetails=1&limit=1&q=" + quote(q))
+            except Exception:
+                data = None
+            if data:
+                first = data[0]
+                payload = {
+                    "found": True,
+                    "lat": float(first["lat"]),
+                    "lon": float(first["lon"]),
+                    "display_name": first.get("display_name", ""),
+                    "address": first.get("address", {}),
+                }
+            else:
+                payload = {"found": False}
+            return self._send(200, json.dumps(payload), "application/json")
+
         if parsed.path == "/api/flights":
             qs = parse_qs(parsed.query)
             try:
